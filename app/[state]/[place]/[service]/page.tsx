@@ -5,10 +5,12 @@ import {
   getLocation, getService,
   getSiblingServices, getNearbyLocations,
   isLocationAndServiceAllowed,
+  getLocalInfrastructure,
 } from "@/lib/data";
 import {
   BRAND_NAME, PHONE_NUMBER, PHONE_TEL, SITE_URL,
   NICHE, NICHE_PLURAL, NICHE_SINGULAR, SCHEMA_TYPE, CONTENT_SALT, ACTIVE_CONCEPT,
+  getDidForService,
 } from "@/lib/config";
 import { selectVariant } from "@/lib/spintax";
 import { CONTENT_PACK, renderTemplate } from "@/lib/content";
@@ -22,7 +24,7 @@ import {
 } from "@/components/landing-components";
 import { tokens } from "@/lib/tokens";
 
-export const revalidate = 2592000; // 30 days
+export const revalidate = 300; // 5 minutes cache
 export const dynamicParams = true;
 
 interface Props {
@@ -42,11 +44,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const stateCode = state.toUpperCase();
   const [loc, svc] = await Promise.all([getLocation(stateCode, place), getService(serviceSlug)]);
   if (!loc || !svc) return { title: "Not Found" };
-  const allowed = await isLocationAndServiceAllowed(stateCode, place, serviceSlug);
-  if (!allowed) return { title: "Not Found" };
 
+  const did = getDidForService(svc.service_slug);
   const title       = `${svc.service_name} in ${loc.place_name}, ${stateCode}`.slice(0, 60);
-  const description = `Need ${svc.service_name.toLowerCase()} in ${loc.place_name}, ${loc.state_name}? ${BRAND_NAME} provides 24/7 licensed service. Call ${PHONE_NUMBER} now.`.slice(0, 155);
+  const description = `Need ${svc.service_name.toLowerCase()} in ${loc.place_name}, ${loc.state_name}? ${BRAND_NAME} provides 24/7 licensed service. Call ${did.number} now.`.slice(0, 155);
   const canonicalUrl = `${SITE_URL}/${stateCode.toLowerCase()}/${loc.place_slug}/${svc.service_slug}`;
 
   return {
@@ -154,8 +155,8 @@ export default async function ServicePage({ params }: Props) {
 
   const [loc, svc] = await Promise.all([getLocation(stateCode, place), getService(serviceSlug)]);
   if (!loc || !svc) notFound();
-  const allowed = await isLocationAndServiceAllowed(stateCode, place, serviceSlug);
-  if (!allowed) notFound();
+
+  const infra = getLocalInfrastructure(stateCode, place);
 
   const [siblings, nearby] = await Promise.all([
     getSiblingServices(loc.id, svc.id, 5),
@@ -170,12 +171,14 @@ export default async function ServicePage({ params }: Props) {
   const canonicalUrl = `${SITE_URL}/${stateCode.toLowerCase()}/${loc.place_slug}/${svc.service_slug}`;
   const { rating, reviewCount } = getRating(loc.id, svc.id);
 
+  const did = getDidForService(svc.service_slug);
+
   const serviceJsonLd = {
     "@context": "https://schema.org",
     "@type": SCHEMA_TYPE,
     name: `${BRAND_NAME} — ${svc.service_name}`,
     description: `Professional ${svc.service_name.toLowerCase()} in ${loc.place_name}, ${loc.state_name}. Licensed and insured. Available 24/7.`,
-    telephone: PHONE_NUMBER,
+    telephone: did.number,
     url: canonicalUrl,
     areaServed: {
       "@type": "City",
@@ -233,14 +236,82 @@ export default async function ServicePage({ params }: Props) {
         city={loc.place_name}
         service={svc.service_name}
         serviceSlug={svc.service_slug}
-        phone={PHONE_NUMBER}
-        phoneHref={`tel:${PHONE_TEL}`}
+        phone={did.number}
+        phoneHref={`tel:${did.tel}`}
         rating={rating}
         reviewCount={reviewCount}
         responseTime="30–45 min"
         licenseNo="State Licensed & Insured"
         brandName={BRAND_NAME}
       />
+
+      {/* Verified Municipal Infrastructure & Code Compliance Data Box */}
+      <section style={{ backgroundColor: activeTokens.palette.surface || "#0F1C36", padding: "40px 24px", borderTop: `1px solid ${activeTokens.palette.line}` }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+            <span style={{ fontSize: "1.4rem" }}>🏛️</span>
+            <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: activeTokens.palette.text, margin: 0 }}>
+              {loc.place_name}, {stateCode} Municipal Water Standards &amp; Compliance Data
+            </h2>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: 28 }}>
+            <div style={{ backgroundColor: activeTokens.palette.bg, border: `1px solid ${activeTokens.palette.line}`, borderRadius: 12, padding: "18px 20px" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: activeTokens.palette.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                Water Utility / District
+              </div>
+              <div style={{ fontWeight: 800, fontSize: "0.95rem", color: activeTokens.palette.text }}>
+                {infra.water_district_name}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: activeTokens.palette.bg, border: `1px solid ${activeTokens.palette.line}`, borderRadius: 12, padding: "18px 20px" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: activeTokens.palette.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                Local Water Hardness
+              </div>
+              <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#38BDF8" }}>
+                {infra.local_water_hardness}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: activeTokens.palette.bg, border: `1px solid ${activeTokens.palette.line}`, borderRadius: 12, padding: "18px 20px" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: activeTokens.palette.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                Municipal PSI Standard
+              </div>
+              <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#F59E0B" }}>
+                {infra.municipal_psi_standard}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: activeTokens.palette.bg, border: `1px solid ${activeTokens.palette.line}`, borderRadius: 12, padding: "18px 20px" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: activeTokens.palette.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                Backflow Compliance Agency
+              </div>
+              <div style={{ fontWeight: 800, fontSize: "0.95rem", color: activeTokens.palette.text }}>
+                {infra.county_backflow_compliance_dept}
+              </div>
+            </div>
+          </div>
+
+          {/* LeadSmart >= 90s Call-Priming Checklist */}
+          <div style={{ backgroundColor: "rgba(37, 99, 235, 0.08)", border: "1px solid rgba(37, 99, 235, 0.3)", borderRadius: 14, padding: "24px 28px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: "1.3rem" }}>📋</span>
+              <h3 style={{ fontSize: "1.15rem", fontWeight: 800, color: activeTokens.palette.text, margin: 0 }}>
+                Before You Call Dispatch: Fast Intake Checklist
+              </h3>
+            </div>
+            <p style={{ color: activeTokens.palette.muted, fontSize: "0.875rem", lineHeight: 1.6, margin: "0 0 12px" }}>
+              When you connect with our dispatch coordinator for {loc.place_name}, please have the following details ready:
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 20, color: activeTokens.palette.text, fontSize: "0.875rem", lineHeight: 1.8 }}>
+              <li><strong>Scope:</strong> Is the {svc.service_name.toLowerCase()} issue affecting your entire {loc.place_name} property or an isolated fixture?</li>
+              <li><strong>Age &amp; Piping:</strong> What is your approximate home construction year and existing pipe type (copper, galvanized, PEX, polybutylene)?</li>
+              <li><strong>Location:</strong> Confirm your exact local ZIP code in {loc.place_name} so we route the closest available licensed specialist.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
 
       <section style={{ backgroundColor: activeTokens.palette.bg, padding: "48px 24px 60px", borderTop: `1px solid ${activeTokens.palette.line}` }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 36 }}>
